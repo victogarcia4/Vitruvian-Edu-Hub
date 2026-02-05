@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MembraneX | Bio-System Restoration</title>
+    <!-- Tailwind CSS for Layout Utility -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- VITRUVIAN BIOS THEME --- */
+        :root {
+            --bg-void: #050505;
+            --text-primary: #E0E0E0;
+            --neon-cyan: #00FFD1;
+            --bio-amber: #FFB800;
+            --alert-red: #FF2A2A;
+            --scanline-color: rgba(0, 255, 209, 0.03);
+        }
+
+        body {
+            background-color: var(--bg-void);
+            color: var(--text-primary);
+            font-family: 'Courier New', Courier, monospace;
+            height: 100dvh; /* Dynamic viewport height for mobile */
+            overflow: hidden; /* Prevent body scroll, handle inside containers */
+            user-select: none; /* Improve drag/drop feel */
+        }
+
+        /* --- CRT EFFECT --- */
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                var(--scanline-color) 50%,
+                rgba(0, 0, 0, 0) 50%
+            );
+            background-size: 100% 4px;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* --- UI COMPONENTS --- */
+        .terminal-box {
+            border: 1px solid #333;
+            box-shadow: 0 0 10px rgba(0, 255, 209, 0.1);
+        }
+
+        .terminal-text {
+            text-shadow: 0 0 2px var(--neon-cyan);
+        }
+
+        .bio-btn {
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            transition: all 0.2s;
+            background: rgba(0, 255, 209, 0.05);
+        }
+
+        .bio-btn:hover:not(:disabled) {
+            background: var(--neon-cyan);
+            color: var(--bg-void);
+            box-shadow: 0 0 15px var(--neon-cyan);
+            cursor: pointer;
+        }
+
+        .bio-btn:disabled {
+            border-color: #555;
+            color: #555;
+            cursor: not-allowed;
+        }
+
+        .bio-btn.correct {
+            background: var(--neon-cyan);
+            color: var(--bg-void);
+        }
+
+        .bio-btn.wrong {
+            border-color: var(--alert-red);
+            color: var(--alert-red);
+            background: rgba(255, 42, 42, 0.1);
+        }
+
+        /* --- DRAG AND DROP STYLES --- */
+        .drop-zone {
+            border: 2px dashed #444;
+            background: rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+        .drop-zone.drag-over {
+            border-color: var(--neon-cyan);
+            background: rgba(0, 255, 209, 0.1);
+            box-shadow: 0 0 15px rgba(0, 255, 209, 0.2);
+        }
+        .drop-zone.matched {
+            border: 2px solid var(--neon-cyan);
+            background: rgba(0, 255, 209, 0.2);
+            color: var(--bg-void);
+        }
+        
+        .draggable-item {
+            cursor: grab;
+            background: #111;
+            border: 1px solid var(--bio-amber);
+            color: var(--bio-amber);
+            box-shadow: 0 0 5px rgba(255, 184, 0, 0.2);
+        }
+        .draggable-item:active {
+            cursor: grabbing;
+        }
+        .draggable-item.dragging {
+            opacity: 0.5;
+        }
+        .draggable-item.matched-hidden {
+            display: none;
+        }
+
+        /* --- PHYSICS SIMULATION STYLES --- */
+        .sim-container {
+            background: #111;
+            border: 1px solid #333;
+            height: 100px;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        
+        .piston-track {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 4px;
+            background: #333;
+            transform: translateY(-50%);
+        }
+
+        .piston-head {
+            width: 40px;
+            height: 60px;
+            background: var(--alert-red);
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            transform: translateY(-50%);
+            box-shadow: 0 0 10px var(--alert-red);
+            border: 2px solid #fff;
+        }
+
+        /* Animations for friction states */
+        .piston-jerky {
+            animation: jerkySlide 2s infinite linear;
+        }
+        
+        .piston-smooth {
+            animation: smoothSlide 2s infinite ease-in-out;
+            background: var(--neon-cyan) !important;
+            box-shadow: 0 0 15px var(--neon-cyan) !important;
+        }
+
+        .piston-stuck {
+            left: 50% !important;
+            animation: stuckPulse 0.5s infinite;
+        }
+
+        @keyframes jerkySlide {
+            0% { left: 10%; }
+            15% { left: 12%; } /* Stuck */
+            20% { left: 30%; } /* Jump */
+            35% { left: 32%; } /* Stuck */
+            40% { left: 60%; } /* Jump */
+            55% { left: 58%; } /* Drag back */
+            60% { left: 80%; }
+            75% { left: 82%; }
+            80% { left: 50%; }
+            100% { left: 10%; }
+        }
+
+        @keyframes smoothSlide {
+            0% { left: 10%; }
+            50% { left: 80%; }
+            100% { left: 10%; }
+        }
+
+        @keyframes stuckPulse {
+            0% { transform: translateY(-50%) scale(1); opacity: 1; }
+            50% { transform: translateY(-50%) scale(1.1); opacity: 0.5; }
+            100% { transform: translateY(-50%) scale(1); opacity: 1; }
+        }
+
+        /* --- THE CORE (STATUS ORB) --- */
+        .core-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 150px;
+        }
+
+        .core-orb {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--bio-amber) 10%, transparent 70%);
+            box-shadow: 0 0 20px var(--bio-amber);
+            animation: pulse 2s infinite ease-in-out;
+            transition: all 0.5s ease;
+        }
+
+        .core-orb.stable {
+            background: radial-gradient(circle, var(--neon-cyan) 10%, transparent 70%);
+            box-shadow: 0 0 20px var(--neon-cyan);
+            animation: pulse 4s infinite ease-in-out;
+        }
+
+        .core-orb.critical {
+            background: radial-gradient(circle, var(--alert-red) 10%, transparent 70%);
+            box-shadow: 0 0 30px var(--alert-red);
+            animation: pulse 0.5s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.7; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.7; }
+        }
+
+        /* --- CODEX ACCORDION --- */
+        details > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #333;
+        }
+        details > summary::marker { display: none; }
+        details > summary:hover { color: var(--neon-cyan); }
+        details[open] > summary { border-bottom: 1px solid var(--neon-cyan); color: var(--neon-cyan); }
+        
+        /* Utility for scrollbars */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #111; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #333; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: var(--neon-cyan); }
+
+        select {
+            background: #111;
+            color: var(--neon-cyan);
+            border: 1px solid var(--neon-cyan);
+            padding: 8px;
+            font-family: inherit;
+            width: 100%;
+            cursor: pointer;
+        }
+        select:focus { outline: none; box-shadow: 0 0 10px var(--neon-cyan); }
+    </style>
+</head>
+<body class="flex flex-col p-2 md:p-6 text-sm md:text-base">
+
+    <div class="scanlines"></div>
+
+    <!-- HEADER: ANATOMY CODEX -->
+    <header class="mb-2 md:mb-4 terminal-box bg-black/80 z-10 flex-shrink-0">
+        <details class="group">
+            <summary class="flex justify-between items-center font-bold uppercase tracking-widest text-xs md:text-sm">
+                <span>[ MEMBRANEX CODEX ]</span>
+                <div class="flex items-center">
+                    <span class="mr-2 px-2 py-0.5 border border-[var(--bio-amber)] text-[var(--bio-amber)] text-[10px] rounded-full normal-case">List of Terms</span>
+                    <span class="text-[var(--neon-cyan)] group-open:rotate-180 transition-transform">▼</span>
+                </div>
+            </summary>
+            <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-400 bg-gray-900/50 max-h-48 overflow-y-auto custom-scroll">
+                <div>
+                    <strong class="text-[var(--neon-cyan)]">Cutaneous:</strong> Dry membrane (skin). Keratinized stratified squamous epithelium.
+                </div>
+                <div>
+                    <strong class="text-[var(--neon-cyan)]">Mucous:</strong> Wet membrane. Lines cavities open to exterior (digestive, respiratory).
+                </div>
+                <div>
+                    <strong class="text-[var(--neon-cyan)]">Serous:</strong> Wet, double-layered. Lines closed ventral cavities.
+                </div>
+                <div>
+                    <strong class="text-[var(--neon-cyan)]">Synovial:</strong> Connective tissue only. Lines joint cavities.
+                </div>
+                <!-- Expanded Terms -->
+                <div class="border-t border-gray-700 pt-2 mt-2 col-span-1 md:col-span-2 text-[var(--bio-amber)]">
+                    // SPECIFIC SEROUS MEMBRANES //
+                </div>
+                <div>
+                    <strong class="text-[var(--bio-amber)]">Pleura:</strong> Serous membrane associated with the Lungs & Pleural Cavity.
+                </div>
+                <div>
+                    <strong class="text-[var(--bio-amber)]">Pericardium:</strong> Serous membrane associated with the Heart & Pericardial Cavity.
+                </div>
+                <div>
+                    <strong class="text-[var(--bio-amber)]">Peritoneum:</strong> Serous membrane associated with Abdominal Organs & Peritoneal Cavity.
+                </div>
+            </div>
+        </details>
+    </header>
+
+    <!-- MAIN GRID -->
+    <main class="flex-grow grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 h-full min-h-0 overflow-y-auto md:overflow-hidden">
+        
+        <!-- LEFT: TERMINAL LOG -->
+        <section class="md:col-span-4 terminal-box bg-black/50 flex flex-col min-h-0 order-2 md:order-1">
+            <div class="p-2 border-b border-[#333] text-[var(--bio-amber)] text-xs font-bold uppercase">
+                > System_Log.log
+            </div>
+            <!-- Reduced height on mobile (h-32) to save space, flex-grow on desktop -->
+            <div id="terminal-output" class="p-4 overflow-y-auto custom-scroll font-mono text-xs md:text-sm leading-relaxed h-32 md:h-auto md:flex-grow">
+                <div class="mb-2 text-gray-500">Initializing MembraneX v2.1...</div>
+                <div class="mb-2 text-gray-500">Loading HAPS_Module_04 [Membranes]...</div>
+                <div class="mb-2 text-[var(--alert-red)]">ALERT: System Integrity at 45%. Membrane failure detected.</div>
+                <div class="mb-2">> Waiting for Engineer input...</div>
+            </div>
+        </section>
+
+        <!-- CENTER: THE CORE & INTERACTION -->
+        <section class="md:col-span-5 terminal-box bg-black/50 flex flex-col min-h-0 relative order-1 md:order-2">
+            <!-- STATUS HEADER -->
+            <div class="p-2 border-b border-[#333] flex justify-between items-center text-xs">
+                <span class="text-[var(--neon-cyan)] uppercase">> Sector: <span id="sector-name">Loading...</span></span>
+                <span id="progress-indicator">0 / 6</span>
+            </div>
+
+            <!-- THE CORE VISUALIZATION -->
+            <div class="core-container relative flex-shrink-0">
+                <div id="core-visual" class="core-orb"></div>
+                <div class="absolute text-[var(--neon-cyan)] text-xs uppercase tracking-widest font-bold mt-24">
+                    Bio-Frame Integrity
+                </div>
+            </div>
+
+            <!-- QUESTION DISPLAY -->
+            <div class="px-6 py-2 text-center flex-shrink-0">
+                <p id="question-text" class="text-sm md:text-lg font-bold leading-relaxed text-white">
+                    Initialize Simulation to begin diagnostics.
+                </p>
+            </div>
+
+            <!-- CONTROLS (Dynamic Content Area) -->
+            <div id="options-container" class="p-4 flex-grow flex flex-col justify-end mt-2 overflow-hidden">
+                <button id="start-btn" onclick="initGame()" class="bio-btn py-3 px-4 font-bold uppercase tracking-widest w-full">
+                    [ Initialize System Restoration ]
+                </button>
+            </div>
+        </section>
+
+        <!-- RIGHT: STATUS & BADGES -->
+        <section class="md:col-span-3 terminal-box bg-black/50 flex flex-col order-3">
+            <div class="p-2 border-b border-[#333] text-[var(--neon-cyan)] text-xs font-bold uppercase">
+                > Engineer_Status
+            </div>
+            <div class="p-4 flex-grow">
+                <div class="mb-6">
+                    <div class="text-xs text-gray-500 mb-1">System Health</div>
+                    <div class="w-full bg-[#111] h-2 rounded-full overflow-hidden">
+                        <div id="health-bar" class="h-full bg-[var(--bio-amber)] transition-all duration-500" style="width: 45%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <div class="text-xs text-gray-500 mb-1">Current Protocol</div>
+                    <div id="protocol-name" class="text-sm font-bold text-white">Standby</div>
+                </div>
+
+                <div id="badge-container" class="opacity-0 transition-opacity duration-1000 border border-[var(--neon-cyan)] p-2 text-center">
+                    <div class="text-[var(--neon-cyan)] text-4xl mb-2">❖</div>
+                    <div class="text-xs uppercase font-bold text-[var(--neon-cyan)]">Certified<br>Bio-Architect</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- GAME LOGIC -->
+    <script>
+        // --- DATA STRUCTURE (HAPS ALIGNED) ---
+        const gameData = [
+            {
+                type: 'quiz',
+                id: 1,
+                stageName: "The Outer Hull",
+                narrative: "External sensors detect hull breach. Atmosphere exposure imminent.",
+                question: "Protocol Request: Identify the MEMBRANE TYPE acting as the dry, keratinized outer shield.",
+                options: ["Mucous Membrane", "Cutaneous Membrane", "Serous Membrane", "Synovial Membrane"],
+                correctIndex: 1,
+                feedback: "Correct. Cutaneous membrane (Skin) is the only dry membrane, consisting of keratinized stratified squamous epithelium.",
+                techFeedback: "Hull integrity restored. Keratin shields active."
+            },
+            {
+                type: 'quiz',
+                id: 2,
+                stageName: "I/O Manifolds",
+                narrative: "Warning: Intake ports compromising. Filtration systems offline.",
+                question: "Protocol Request: Which MEMBRANE TYPE lines body cavities OPEN to the exterior (Respiratory, Digestive)?",
+                options: ["Serous Membrane", "Cutaneous Membrane", "Mucous Membrane", "Synovial Membrane"],
+                correctIndex: 2,
+                feedback: "Correct. Mucous membranes (Mucosae) vary in epithelium type but all line cavities open to the exterior.",
+                techFeedback: "Intake ports sealed. Mucous secretion nominal."
+            },
+            {
+                type: 'quiz',
+                id: 3,
+                stageName: "Internal Hydraulics (Generic)",
+                narrative: "Internal friction detected in ventral cavity modules.",
+                question: "Protocol Request: We need to line the CLOSED ventral body cavities. Which double-layered membrane system is required?",
+                options: ["Serous Membrane", "Synovial Membrane", "Mucous Membrane", "Cutaneous Membrane"],
+                correctIndex: 0,
+                feedback: "Correct. Serous membranes (Serosae) are double-layered (visceral/parietal) and line closed ventral cavities.",
+                techFeedback: "Hydraulics pressurized. Friction reduced."
+            },
+            {
+                type: 'quiz',
+                id: 4,
+                stageName: "Kinetic Articulators",
+                narrative: "Joint actuators grinding. Lubricant levels critical.",
+                question: "Protocol Request: Identify the Connective Tissue membrane lining the JOINT CAVITIES.",
+                options: ["Cutaneous Membrane", "Serous Membrane", "Mucous Membrane", "Synovial Membrane"],
+                correctIndex: 3,
+                feedback: "Correct. Synovial membranes consist of connective tissue only and line joint cavities to secrete lubricating fluid.",
+                techFeedback: "Articulators lubricated. Kinetic motion restored."
+            },
+            {
+                type: 'matching',
+                id: 5,
+                stageName: "Hydraulic Routing",
+                narrative: "CRITICAL ALERT: Serous fluid leaks detected. Route specific serous membranes to their assigned organ systems.",
+                question: "Manual Override: Drag the Membrane Patch to its correct Target System.",
+                pairs: [
+                    { id: "p1", source: "Pleura", target: "Lungs & Pleural Cavity" },
+                    { id: "p2", source: "Pericardium", target: "Heart & Pericardial Cavity" },
+                    { id: "p3", source: "Peritoneum", target: "Abdominal Organs" }
+                ],
+                feedback: "Routing Complete. Pleura shields the lungs, Pericardium encases the heart, and Peritoneum wraps abdominal viscera.",
+                techFeedback: "All hydraulic circuits stabilized. System pressure nominal."
+            },
+            {
+                type: 'simulation', // NEW TYPE
+                id: 6,
+                stageName: "Friction Fixer",
+                narrative: "PHYSICS ENGINE ALERT: Pleural Cavity Piston (Lungs) seizing. High friction detected.",
+                question: "INSTRUCTION: Select the correct MEMBRANE TYPE and FLUID from the dropdown menus below to lubricate the piston.",
+                correctCombo: { membrane: "Serous", fluid: "Serous Fluid" },
+                feedback: "Optimal State. Serous membranes secrete serous fluid to minimize friction in mobile ventral cavities.",
+                techFeedback: "Friction coefficient normalized. Oscillation nominal."
+            }
+        ];
+
+        // --- STATE MANAGEMENT ---
+        let currentLevel = 0;
+        let mistakesInLevel = 0;
+        let systemHealth = 45;
+        let audioCtx;
+        let matchesMade = 0; 
+
+        // --- AUDIO ENGINE ---
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            
+            if (type === 'click') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.setValueAtTime(880, now + 0.1);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        // --- UI LOGIC ---
+
+        function logToTerminal(msg, type = 'info') {
+            const term = document.getElementById('terminal-output');
+            const entry = document.createElement('div');
+            entry.className = "mb-2 animate-pulse";
+            
+            const timestamp = new Date().toLocaleTimeString('en-US', {hour12: false});
+            
+            if (type === 'error') entry.className += " text-[var(--alert-red)]";
+            else if (type === 'success') entry.className += " text-[var(--neon-cyan)]";
+            else entry.className += " text-gray-400";
+
+            entry.innerHTML = `<span class="opacity-50">[${timestamp}]</span> ${msg}`;
+            term.appendChild(entry);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function initGame() {
+            initAudio();
+            playSound('success');
+            // Reset UI if restarting
+            const startBtn = document.getElementById('start-btn');
+            if(startBtn) startBtn.remove();
+            
+            document.getElementById('badge-container').style.opacity = "0";
+
+            currentLevel = 0;
+            systemHealth = 45;
+            updateCoreVisuals();
+            loadLevel();
+        }
+
+        function loadLevel() {
+            mistakesInLevel = 0;
+            matchesMade = 0;
+            const data = gameData[currentLevel];
+            
+            // UI Updates
+            document.getElementById('sector-name').innerText = data.stageName;
+            document.getElementById('protocol-name').innerText = "Running Diagnostics...";
+            document.getElementById('progress-indicator').innerText = `${currentLevel + 1} / ${gameData.length}`;
+            document.getElementById('question-text').innerText = data.question;
+            
+            // Log Narrative
+            logToTerminal("--------------------------------");
+            logToTerminal(`INITIATING PHASE ${currentLevel + 1}: ${data.stageName.toUpperCase()}`);
+            logToTerminal(data.narrative);
+
+            const container = document.getElementById('options-container');
+            container.innerHTML = ''; // Clear container
+
+            if (data.type === 'quiz') {
+                renderQuiz(data, container);
+            } else if (data.type === 'matching') {
+                renderMatching(data, container);
+            } else if (data.type === 'simulation') {
+                renderSimulation(data, container);
+            }
+        }
+
+        // --- QUIZ LOGIC ---
+        function renderQuiz(data, container) {
+            container.className = "p-4 grid grid-cols-1 gap-3 mt-auto"; // Restore grid for quiz
+            data.options.forEach((opt, index) => {
+                const btn = document.createElement('button');
+                btn.className = "bio-btn py-3 px-4 font-bold uppercase text-left w-full";
+                btn.innerHTML = `<span class="opacity-50 mr-2">0${index+1} ::</span> ${opt}`;
+                btn.onclick = () => handleQuizAnswer(index, btn);
+                btn.setAttribute('aria-label', `Select option ${opt}`);
+                container.appendChild(btn);
+            });
+        }
+
+        function handleQuizAnswer(selectedIndex, btnElement) {
+            const data = gameData[currentLevel];
+            
+            if (selectedIndex === data.correctIndex) {
+                // CORRECT
+                playSound('success');
+                btnElement.classList.add('correct');
+                logToTerminal("Protocol Match Confirmed.", "success");
+                logToTerminal(data.techFeedback, "success");
+                
+                healSystem();
+                disableAllButtons();
+
+                setTimeout(() => {
+                    logToTerminal(`> ANALYSIS: ${data.feedback}`);
+                    proceedNext();
+                }, 800);
+
+            } else {
+                // INCORRECT
+                playSound('error');
+                btnElement.classList.add('wrong');
+                btnElement.disabled = true;
+                mistakesInLevel++;
+                
+                logToTerminal(`ERR: Option Invalid. Protocol Mismatch.`, "error");
+                damageSystem();
+
+                if (mistakesInLevel >= 2) {
+                    adaptiveSync(data.correctIndex);
+                }
+            }
+        }
+
+        // --- MATCHING LOGIC (Drag & Drop) ---
+        function renderMatching(data, container) {
+            // Updated Responsive Layout: Flex-Col on mobile, Flex-Row on desktop
+            container.className = "p-2 flex flex-col md:flex-row justify-between min-h-[20rem] md:h-64 mt-2 gap-4 overflow-y-auto custom-scroll"; 
+            
+            // Column 1: Sources (Draggables) - Grid on mobile for easier tapping
+            const sourceCol = document.createElement('div');
+            sourceCol.className = "w-full md:w-1/3 grid grid-cols-1 gap-2 md:flex md:flex-col md:justify-center md:gap-4";
+            
+            // Column 2: Targets (Zones)
+            const targetCol = document.createElement('div');
+            targetCol.className = "w-full md:w-1/2 flex flex-col justify-center gap-2 md:gap-4";
+
+            // Shuffle mechanism for fun
+            const shuffledSources = [...data.pairs].sort(() => Math.random() - 0.5);
+
+            shuffledSources.forEach(pair => {
+                const dragItem = document.createElement('div');
+                dragItem.className = "draggable-item p-3 text-center text-xs md:text-sm font-bold rounded cursor-grab";
+                dragItem.draggable = true;
+                dragItem.innerText = pair.source;
+                dragItem.id = `drag-${pair.id}`;
+                dragItem.dataset.pairId = pair.id;
+                
+                // Drag Events
+                dragItem.addEventListener('dragstart', dragStart);
+                dragItem.addEventListener('dragend', dragEnd);
+                
+                // Touch events for mobile support (basic tap to select logic)
+                dragItem.onclick = () => selectItemMobile(dragItem);
+
+                sourceCol.appendChild(dragItem);
+            });
+
+            data.pairs.forEach(pair => {
+                const zone = document.createElement('div');
+                zone.className = "drop-zone p-3 text-center text-xs md:text-sm border rounded h-16 flex items-center justify-center text-gray-400";
+                zone.innerText = `[ ${pair.target} ]`;
+                zone.dataset.targetId = pair.id;
+
+                // Drop Events
+                zone.addEventListener('dragover', dragOver);
+                zone.addEventListener('dragleave', dragLeave);
+                zone.addEventListener('drop', drop);
+                
+                // Click for mobile (target)
+                zone.onclick = () => selectZoneMobile(zone);
+
+                targetCol.appendChild(zone);
+            });
+
+            container.appendChild(sourceCol);
+            container.appendChild(targetCol);
+            
+            logToTerminal("> INSTRUCTION: Drag the Membrane (Left) to the Cavity (Right).", "info");
+        }
+
+        // --- SIMULATION LOGIC (Friction Fixer) ---
+        function renderSimulation(data, container) {
+            container.className = "p-4 flex flex-col mt-auto";
+
+            // 1. Simulation Visualizer
+            const simBox = document.createElement('div');
+            simBox.className = "sim-container";
+            simBox.innerHTML = `
+                <div class="piston-track"></div>
+                <div id="piston" class="piston-head piston-jerky"></div>
+                <div class="absolute bottom-1 right-2 text-[10px] text-gray-500 uppercase">Friction Monitor</div>
+            `;
+            container.appendChild(simBox);
+
+            // 2. Controls Grid
+            const controlsGrid = document.createElement('div');
+            controlsGrid.className = "grid grid-cols-2 gap-4 mb-4";
+            
+            // Membrane Selector
+            const selMembrane = document.createElement('select');
+            selMembrane.id = 'sel-membrane';
+            ['Select Membrane...', 'Cutaneous', 'Mucous', 'Serous', 'Synovial'].forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt === 'Select Membrane...' ? '' : opt;
+                o.text = opt;
+                selMembrane.appendChild(o);
+            });
+
+            // Fluid Selector
+            const selFluid = document.createElement('select');
+            selFluid.id = 'sel-fluid';
+            ['Select Fluid...', 'No Fluid', 'Mucus', 'Serous Fluid', 'Synovial Fluid'].forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt === 'Select Fluid...' ? '' : opt;
+                o.text = opt;
+                selFluid.appendChild(o);
+            });
+
+            controlsGrid.appendChild(selMembrane);
+            controlsGrid.appendChild(selFluid);
+            container.appendChild(controlsGrid);
+
+            // 3. Apply Button
+            const applyBtn = document.createElement('button');
+            applyBtn.className = "bio-btn py-3 px-4 font-bold uppercase tracking-widest w-full";
+            applyBtn.innerText = "[ ENGAGE CONFIGURATION ]";
+            applyBtn.onclick = () => handleSimulation(data);
+            container.appendChild(applyBtn);
+        }
+
+        function handleSimulation(data) {
+            const membrane = document.getElementById('sel-membrane').value;
+            const fluid = document.getElementById('sel-fluid').value;
+            const piston = document.getElementById('piston');
+
+            if (!membrane || !fluid) {
+                logToTerminal("ERR: Configuration Incomplete.", "error");
+                return;
+            }
+
+            // Outcome Logic
+            if (membrane === data.correctCombo.membrane && fluid === data.correctCombo.fluid) {
+                // SUCCESS
+                playSound('success');
+                piston.className = "piston-head piston-smooth";
+                logToTerminal("Friction Coefficient: 0.02 (OPTIMAL)", "success");
+                logToTerminal(data.techFeedback, "success");
+                
+                healSystem();
+                document.getElementById('sel-membrane').disabled = true;
+                document.getElementById('sel-fluid').disabled = true;
+                
+                setTimeout(() => {
+                    logToTerminal(`> ANALYSIS: ${data.feedback}`);
+                    proceedNext();
+                }, 1000);
+
+            } else {
+                // FAILURE SCENARIOS
+                playSound('error');
+                damageSystem();
+                
+                if (membrane === "Cutaneous" || fluid === "No Fluid") {
+                    piston.className = "piston-head piston-jerky";
+                    logToTerminal("ERR: Surface Abrasive. Friction Critical.", "error");
+                } else if (fluid === "Mucus") {
+                    piston.className = "piston-head piston-stuck";
+                    logToTerminal("ERR: Viscosity too high. Movement obstructed.", "error");
+                } else {
+                    piston.className = "piston-head piston-jerky";
+                    logToTerminal("ERR: System Mismatch. Protocol Invalid.", "error");
+                }
+            }
+        }
+
+        // -- Drag Functions --
+        let draggedItem = null;
+        let selectedItem = null; 
+
+        function dragStart(e) {
+            draggedItem = this;
+            setTimeout(() => this.classList.add('dragging'), 0);
+        }
+        function dragEnd() {
+            this.classList.remove('dragging');
+            draggedItem = null;
+        }
+        function dragOver(e) {
+            e.preventDefault();
+            this.classList.add('drag-over');
+        }
+        function dragLeave() {
+            this.classList.remove('drag-over');
+        }
+        function drop(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            if(draggedItem) checkMatch(draggedItem, this);
+        }
+
+        // -- Mobile Click/Tap Logic --
+        function selectItemMobile(item) {
+            if(item.classList.contains('matched-hidden')) return;
+            document.querySelectorAll('.draggable-item').forEach(d => d.style.border = '1px solid var(--bio-amber)');
+            selectedItem = item;
+            item.style.border = '2px solid white';
+            playSound('click');
+        }
+        function selectZoneMobile(zone) {
+            if(selectedItem && !zone.classList.contains('matched')) {
+                checkMatch(selectedItem, zone);
+                selectedItem = null;
+            }
+        }
+
+        function checkMatch(item, zone) {
+            const itemId = item.dataset.pairId;
+            const zoneId = zone.dataset.targetId;
+
+            if (itemId === zoneId) {
+                // Match!
+                playSound('success');
+                zone.classList.add('matched');
+                zone.innerHTML = `<strong>${item.innerText}</strong><br><span class='text-[0.6rem]'>LINKED</span>`;
+                item.classList.add('matched-hidden');
+                item.draggable = false;
+                
+                matchesMade++;
+                logToTerminal(`> Link Established: ${item.innerText}`, "success");
+
+                if (matchesMade === 3) {
+                    const data = gameData[currentLevel];
+                    logToTerminal(data.techFeedback, "success");
+                    healSystem();
+                    setTimeout(() => {
+                        logToTerminal(`> ANALYSIS: ${data.feedback}`);
+                        proceedNext();
+                    }, 1000);
+                }
+
+            } else {
+                // Fail
+                playSound('error');
+                logToTerminal("ERR: Incompatible Tissue Type.", "error");
+                damageSystem();
+                zone.classList.add('border-red-500');
+                setTimeout(() => zone.classList.remove('border-red-500'), 500);
+            }
+        }
+
+
+        // --- COMMON HELPERS ---
+        function healSystem() {
+            systemHealth += (100 / gameData.length);
+            if (systemHealth > 100) systemHealth = 100;
+            updateCoreVisuals(true);
+        }
+
+        function damageSystem() {
+            systemHealth -= 5;
+            if (systemHealth < 0) systemHealth = 0;
+            updateCoreVisuals(false);
+        }
+
+        function disableAllButtons() {
+            const allBtns = document.querySelectorAll('.bio-btn');
+            allBtns.forEach(b => b.disabled = true);
+        }
+
+        function proceedNext() {
+            setTimeout(() => {
+                if (currentLevel < gameData.length - 1) {
+                    currentLevel++;
+                    loadLevel();
+                } else {
+                    triggerWinState();
+                }
+            }, 2500);
+        }
+
+        function adaptiveSync(correctIndex) {
+            logToTerminal("ADAPTIVE SYNC ENGAGED: Isolating correct protocol...", "info");
+            playSound('click');
+            const allBtns = document.querySelectorAll('.bio-btn');
+            if(allBtns[correctIndex]) {
+                allBtns[correctIndex].classList.add('animate-pulse');
+                allBtns[correctIndex].style.boxShadow = "inset 0 0 10px var(--neon-cyan)";
+            }
+        }
+
+        function updateCoreVisuals() {
+            const bar = document.getElementById('health-bar');
+            const orb = document.getElementById('core-visual');
+            
+            bar.style.width = `${systemHealth}%`;
+
+            if (systemHealth > 80) {
+                bar.className = "h-full transition-all duration-500 bg-[var(--neon-cyan)]";
+                orb.className = "core-orb stable";
+            } else if (systemHealth < 30) {
+                bar.className = "h-full transition-all duration-500 bg-[var(--alert-red)]";
+                orb.className = "core-orb critical";
+            } else {
+                bar.className = "h-full transition-all duration-500 bg-[var(--bio-amber)]";
+                orb.className = "core-orb"; 
+            }
+        }
+
+        function triggerWinState() {
+            const container = document.getElementById('options-container');
+            container.className = "p-4 grid grid-cols-1 gap-3 mt-auto"; // Reset to grid for end screen
+            
+            container.innerHTML = `
+                <div class="text-center p-4 border border-[var(--neon-cyan)] bg-[rgba(0,255,209,0.1)] mb-4">
+                    <h2 class="text-xl font-bold text-[var(--neon-cyan)] mb-2">SYSTEM RESTORED</h2>
+                    <p class="text-sm">Biological Mainframe Online.<br>Membrane Integrity 100%.</p>
+                </div>
+                <button onclick="initGame()" class="bio-btn py-3 px-4 font-bold uppercase tracking-widest w-full animate-pulse">
+                    [ REBOOT SYSTEM ]
+                </button>
+            `;
+            
+            document.getElementById('question-text').innerText = "Diagnostic Complete.";
+            document.getElementById('protocol-name').innerText = "Optimal";
+            document.getElementById('badge-container').style.opacity = "1";
+            
+            logToTerminal("--------------------------------");
+            logToTerminal("ALL SYSTEMS NOMINAL.", "success");
+            logToTerminal("SESSION TERMINATED.", "info");
+            playSound('success');
+        }
+
+    </script>
+</body>
+</html>
