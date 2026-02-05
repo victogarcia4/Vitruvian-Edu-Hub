@@ -19,6 +19,7 @@ export interface GameLink {
 export enum TabView {
   TUTOR = 'TUTOR',
   LEARNING_STYLE = 'LEARNING_STYLE',
+  FOCUS_TIMER = 'FOCUS_TIMER',
   GAMES = 'GAMES',
   CONVERTER = 'CONVERTER'
 }

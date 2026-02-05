@@ -4,8 +4,9 @@ import TutorSection from './components/TutorSection';
 import GameSection from './components/GameSection';
 import ConverterSection from './components/ConverterSection';
 import LearningStyleSection from './components/LearningStyleSection';
+import FocusTimerSection from './components/FocusTimerSection';
 import { TabView } from './types';
-import { GraduationCap, Gamepad2, ArrowRightLeft, BrainCircuit } from 'lucide-react';
+import { GraduationCap, Gamepad2, ArrowRightLeft, BrainCircuit, Timer } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabView>(TabView.TUTOR);
@@ -16,6 +17,8 @@ const App: React.FC = () => {
         return <TutorSection />;
       case TabView.LEARNING_STYLE:
         return <LearningStyleSection />;
+      case TabView.FOCUS_TIMER:
+        return <FocusTimerSection />;
       case TabView.GAMES:
         return <GameSection />;
       case TabView.CONVERTER:
@@ -42,7 +45,7 @@ const App: React.FC = () => {
                   : 'text-slate-600 hover:text-[#4a90e2] hover:bg-slate-50'
               }`}
             >
-              <GraduationCap className="w-4 h-4" />
+              < GraduationCap className="w-4 h-4" />
               Tutor
             </button>
             <button
@@ -55,6 +58,17 @@ const App: React.FC = () => {
             >
               <BrainCircuit className="w-4 h-4" />
               Learning Style
+            </button>
+            <button
+              onClick={() => setActiveTab(TabView.FOCUS_TIMER)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                activeTab === TabView.FOCUS_TIMER
+                  ? 'bg-[#4a90e2] text-white shadow-md'
+                  : 'text-slate-600 hover:text-[#4a90e2] hover:bg-slate-50'
+              }`}
+            >
+              <Timer className="w-4 h-4" />
+              Focus Timer
             </button>
             <button
               onClick={() => setActiveTab(TabView.GAMES)}
